@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../channel-cs/src/ChannelCs/ChannelCs.csproj" />
-    <ProjectReference Include="../../channel-cs/src/ChannelCs.Client/ChannelCs.Client.csproj" />
+    <ProjectReference Include="../../../channel-cs/src/ChannelCs/ChannelCs.csproj" />
+    <ProjectReference Include="../../../channel-cs/src/ChannelCs.Client/ChannelCs.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
