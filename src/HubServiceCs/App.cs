@@ -39,7 +39,7 @@ public sealed class App
         return element;
     }
 
-    public static Dictionary<string, object?> TextField(string value, string? placeholder = null, Action? action = null)
+    public static Dictionary<string, object?> TextField(string value, string? placeholder = null, AppAction? action = null)
     {
         var element = new Dictionary<string, object?> { ["type"] = "textField", ["value"] = value };
         if (!string.IsNullOrEmpty(placeholder))
@@ -55,7 +55,7 @@ public sealed class App
         return element;
     }
 
-    public static Dictionary<string, object?> Button(string title, Action action)
+    public static Dictionary<string, object?> Button(string title, AppAction action)
     {
         return new Dictionary<string, object?> { ["type"] = "button", ["title"] = title, ["action"] = action };
     }
@@ -66,7 +66,7 @@ public sealed class App
         object? min = null,
         object? max = null,
         object? step = null,
-        Action? action = null)
+        AppAction? action = null)
     {
         var element = new Dictionary<string, object?> { ["type"] = "slider", ["value"] = value };
         if (defaultValue is not null)
@@ -123,7 +123,7 @@ public sealed class App
         return element;
     }
 
-    public static Dictionary<string, object?> Files(string value, object? title = null, Action? action = null)
+    public static Dictionary<string, object?> Files(string value, object? title = null, AppAction? action = null)
     {
         var element = new Dictionary<string, object?> { ["type"] = "files", ["value"] = value };
         if (title is not null)
@@ -139,7 +139,7 @@ public sealed class App
         return element;
     }
 
-    public static Dictionary<string, object?> FileOperation(string? format = null, object? title = null, Action? action = null)
+    public static Dictionary<string, object?> FileOperation(string? format = null, object? title = null, AppAction? action = null)
     {
         var element = new Dictionary<string, object?> { ["type"] = "fileOperation" };
         if (!string.IsNullOrEmpty(format))
@@ -193,8 +193,9 @@ public sealed class App
     }
 }
 
-// Action references an API call from a UI element.
-public sealed class Action
+// AppAction references an API call from a UI element (named to avoid the
+// System.Action clash).
+public sealed class AppAction
 {
     public string Path { get; init; } = "";
 

@@ -44,7 +44,7 @@ service
         [
             "Hello from C#",
             App.TextField("echo", "Text to echo",
-                new Action { Path = "echo/upper", Body = "value", Output = "value" }),
+                new AppAction { Path = "echo/upper", Body = "value", Output = "value" }),
             App.Cell("$Echo", "value"),
         ],
         Data = new Dictionary<string, object?> { ["hello"] = "world" },

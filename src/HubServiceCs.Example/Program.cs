@@ -17,9 +17,9 @@ service
         Body =
         [
             "Hello from C#",
-            App.TextField("echo", "Text to echo", new Action { Path = "echo/upper", Body = "value", Output = "value" }),
+            App.TextField("echo", "Text to echo", new AppAction { Path = "echo/upper", Body = "value", Output = "value" }),
             App.Cell("$Echo", "value"),
-            App.Button("Upper", new Action { Path = "echo/upper", Body = "value", Output = "value" }),
+            App.Button("Upper", new AppAction { Path = "echo/upper", Body = "value", Output = "value" }),
         ],
         Data = new Dictionary<string, object?> { ["hello"] = "world" },
     })
