@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HubServiceCs/HubServiceCs.csproj" />
+    <Project Path="src/HubServiceCs.Example/HubServiceCs.Example.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HubServiceCs.Tests/HubServiceCs.Tests.csproj" />
+  </Folder>
+</Solution>
