@@ -5,3 +5,4 @@ coverage/
 .vs/
 .idea/
 .DS_Store
+auth

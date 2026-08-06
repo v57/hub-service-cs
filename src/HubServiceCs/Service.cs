@@ -14,6 +14,12 @@ public sealed class ServiceOptions
 
     // Icon is the profile icon: a string or a {symbol, text} dictionary.
     public object? Icon { get; init; }
+
+    // Sign is the hub-pro auth token factory (default: Keychain.Sign, which
+    // loads or generates the `auth` key file in the cwd). The fresh token is
+    // attached as the `auth` header (with v=0) on EVERY connect/reconnect;
+    // hub-lite ignores it.
+    public Func<string>? Sign { get; init; }
 }
 
 // Profile is sent to the hub as hub/profile/update on connect.
@@ -53,7 +59,9 @@ public sealed class ApiSettings
 }
 
 // Service registers API endpoints on a hub and serves calls forwarded by it.
-// Lite port of hub-service (TS reference): no auth, no keychain, no crypto.
+// Port of hub-service (TS reference) with hub-pro auth: every (re)connect
+// attaches a fresh signed `auth` token (ed25519 keychain, `auth` file in the
+// cwd) plus `v: 0`; hub-lite ignores both headers.
 public sealed class Service
 {
     private readonly object _gate = new();
@@ -63,6 +71,7 @@ public sealed class Service
     private readonly List<AppHeader> _apps = [];
     private readonly object _address;
     private readonly Profile? _profile;
+    private readonly Func<string> _sign;
     private ChannelSender<object?>? _sender;
 
     // Creates a Service. Options are optional.
@@ -70,7 +79,11 @@ public sealed class Service
     {
         options ??= new ServiceOptions();
         var hub = Environment.GetEnvironmentVariable("HUB");
-        _address = options.Address ?? (string.IsNullOrEmpty(hub) ? 1997 : hub);
+        _address = options.Address
+            ?? (string.IsNullOrEmpty(hub)
+                ? 1997
+                : int.TryParse(hub, out var hubPort) ? hubPort : hub);
+        _sign = options.Sign ?? (() => Keychain.Sign());
         if (!string.IsNullOrEmpty(options.Name) || options.Icon is not null)
         {
             _profile = new Profile { Name = options.Name, Icon = options.Icon };
@@ -153,6 +166,19 @@ public sealed class Service
 
             var options = new ClientOptions<object?>
             {
+                Headers = () =>
+                {
+                    // Fresh token per (re)connect: the headers provider runs
+                    // on every connection attempt (before the upgrade), so the
+                    // hub sees a fresh signed identity each time. The provider
+                    // is synchronous — no deadlock risk with the read loop.
+                    IReadOnlyDictionary<string, string> headers = new Dictionary<string, string>
+                    {
+                        ["auth"] = _sign(),
+                        ["v"] = "0",
+                    };
+                    return ValueTask.FromResult(headers);
+                },
                 OnConnect = s =>
                 {
                     _ = SendUpdatesAsync(s);
