@@ -47,7 +47,7 @@ public class KeychainTest
             Assert.Equal(TsTestPub, parts[1]);
 
             // Expiry is a DECIMAL epoch-seconds string of now + 10 (TS parity;
-            // hub-pro reads it as base-36 so the decimal form never trips).
+            // hub-pro rejects it once expired or if over 5 minutes ahead).
             Assert.True(long.TryParse(parts[3], out var expiry));
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             Assert.InRange(expiry, now + 9, now + 11);
