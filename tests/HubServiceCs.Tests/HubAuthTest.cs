@@ -59,7 +59,7 @@ public sealed class HubAuthTest : IDisposable
     [Fact]
     public void ConnectsWithV0UntilAHubKeyIsKnown()
     {
-        var service = new Service(new ServiceOptions { Address = 4100 });
+        var service = new Service(new ServiceOptions { Address = 4100, Device = false });
         Assert.Null(service.HubKey);
         Assert.Equal("0", service.AuthHeaders()["v"]);
     }
@@ -67,7 +67,7 @@ public sealed class HubAuthTest : IDisposable
     [Fact]
     public void HubKeyOptionSignsV1()
     {
-        var headers = new Service(new ServiceOptions { Address = 4100, HubKey = TestKeys.HubKey }).AuthHeaders();
+        var headers = new Service(new ServiceOptions { Address = 4100, HubKey = TestKeys.HubKey, Device = false }).AuthHeaders();
         Assert.Equal("1", headers["v"]);
         var parts = headers["auth"].Split('.');
         Assert.True(TestKeys.Verifies(parts[1], $"hub1:{TestKeys.HubKey}:{parts[3]}", parts[2]));
@@ -80,7 +80,7 @@ public sealed class HubAuthTest : IDisposable
         new HubPins(pinsPath).Put("ws://localhost:4100", TestKeys.HubKey);
         Assert.Equal($"{{\"ws://localhost:4100\":\"{TestKeys.HubKey}\"}}", File.ReadAllText(pinsPath));
 
-        var service = new Service(new ServiceOptions { Address = 4100 });
+        var service = new Service(new ServiceOptions { Address = 4100, Device = false });
         Assert.Equal(TestKeys.HubKey, service.HubKey);
         Assert.Equal("1", service.AuthHeaders()["v"]);
         Assert.Null(new Service(new ServiceOptions { Address = "ws://other:1997" }).HubKey);

@@ -25,6 +25,32 @@ public sealed class ServiceOptions
     // HubKey is the hub's SPKI if known up front (invitation or config).
     // Null = learn and pin it via `hub/info`.
     public string? HubKey { get; init; }
+
+    // Device turns device mode on (default) or off: every connect sends a
+    // `device` header, a certificate for the service key signed by the device
+    // key (Docs/Devices/protocol.md section 3).
+    public bool Device { get; init; } = true;
+
+    // DeviceKey is a caller-provided device key (e.g. kept in an app's own
+    // keychain). Null = the device key file.
+    public KeyFile? DeviceKey { get; init; }
+
+    // DeviceKeyPath is the device key file. Null = HubServiceCs.Device.DefaultKeyPath().
+    public string? DeviceKeyPath { get; init; }
+
+    // Instance names this service on its device (`s3-local/Backup Disk`).
+    // Default: the profile name, else the first segment of the first
+    // registered path, else `service`.
+    public string? Instance { get; init; }
+
+    // DeviceName is the suggested device name. Null = the computer name.
+    public string? DeviceName { get; init; }
+
+    // Platform is the certificate platform. Null = this OS.
+    public string? Platform { get; init; }
+
+    // Parent is the declared parent device name (containers and VMs).
+    public string? Parent { get; init; }
 }
 
 // Profile is sent to the hub as hub/profile/update on connect.
@@ -75,9 +101,16 @@ public sealed class ApiSettings
 // answer `hub/info` (hub-lite) keeps getting v0. A refused v1 connect is
 // reported (LastError), never silently downgraded; call ForgetHubKey when the
 // hub key really changed.
+//
+// Device mode (protocol.md section 3, on by default): every connect also
+// carries a `device` header, a certificate for the service key signed by the
+// device key. It is created at connect when missing or with less than 24
+// hours left (7-day lifetime). A device key that can't be read or created
+// turns device mode off for this service.
 public sealed class Service
 {
     private readonly object _gate = new();
+    private readonly object _deviceGate = new();
     private readonly Channel<object?> _channel = new();
     private readonly List<string> _paths = [];
     private readonly Dictionary<string, ApiSettings> _settings = [];
@@ -91,11 +124,20 @@ public sealed class Service
     private ClientSender<object?>? _client;
     private ChannelSender<object?>? _sender;
     private bool _stopped;
+    private readonly ServiceOptions _options;
+    private volatile bool _deviceMode;
+    private KeyFile? _deviceKey;
+    private string? _certificate;
+    private long _certificateExpiry;
+    private string? _deviceName;
 
     // Creates a Service. Options are optional.
     public Service(ServiceOptions? options = null)
     {
         options ??= new ServiceOptions();
+        _options = options;
+        // A custom token factory hides the service key the certificate must name.
+        _deviceMode = options.Device && options.Sign is null;
         var hub = Environment.GetEnvironmentVariable("HUB");
         _address = options.Address
             ?? (string.IsNullOrEmpty(hub)
@@ -119,6 +161,87 @@ public sealed class Service
 
     // AddressKey is the address as `hubs.json` keys it (NormalizeAddress).
     public string AddressKey => NormalizeAddress(_address);
+
+    // Instance is the instance name the certificate carries: the option, else
+    // the profile name, else the first segment of the first registered path,
+    // else `service`.
+    public string Instance
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_options.Instance))
+            {
+                return _options.Instance;
+            }
+
+            if (!string.IsNullOrEmpty(_profile?.Name))
+            {
+                return _profile.Name;
+            }
+
+            lock (_gate)
+            {
+                return _paths.Count > 0 ? _paths[0].Split('/')[0] : "service";
+            }
+        }
+    }
+
+    // DeviceKey is the device key in use, or null before the first connect or
+    // with device mode off.
+    public KeyFile? DeviceKey
+    {
+        get
+        {
+            lock (_deviceGate)
+            {
+                return _deviceKey;
+            }
+        }
+    }
+
+    // DeviceHeader is the `device` header for the next connect, or null with
+    // device mode off. Reuses the current certificate while it has more than
+    // 24 hours left.
+    internal string? DeviceHeader()
+    {
+        if (!_deviceMode)
+        {
+            return null;
+        }
+
+        lock (_deviceGate)
+        {
+            try
+            {
+                _deviceKey ??= _options.DeviceKey
+                    ?? HubServiceCs.Device.LoadOrCreateKey(_options.DeviceKeyPath ?? HubServiceCs.Device.DefaultKeyPath());
+                var now = Keychain.Now();
+                if (_certificate is null || _certificateExpiry - now < HubServiceCs.Device.RenewBefore)
+                {
+                    _deviceName ??= _options.DeviceName ?? HubServiceCs.Device.DefaultName();
+                    var exp = now + HubServiceCs.Device.CertificateLifetime;
+                    _certificate = HubServiceCs.Device.Certificate(_deviceKey, HubServiceCs.Device.CertificatePayload(
+                        _deviceKey.PublicKey,
+                        Keychain.PublicKey(),
+                        Instance,
+                        _deviceName,
+                        _options.Platform ?? HubServiceCs.Device.DefaultPlatform(),
+                        _options.Parent,
+                        now,
+                        exp));
+                    _certificateExpiry = exp;
+                }
+
+                return _certificate;
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"hub-service: device mode off: {error.Message}");
+                _deviceMode = false;
+                return null;
+            }
+        }
+    }
 
     // ForgetHubKey clears the pinned hub key for this address, so the next
     // connect uses v0 and pins whatever key `hub/info` returns. Use it when a
@@ -301,6 +424,12 @@ public sealed class Service
         {
             headers["auth"] = Keychain.Sign();
             headers["v"] = "0";
+        }
+
+        var device = DeviceHeader();
+        if (device is not null)
+        {
+            headers["device"] = device;
         }
 
         return headers;

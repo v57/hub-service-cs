@@ -72,6 +72,13 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
   (`HubKey` supplies it up front, `ForgetHubKey()` clears the pin,
   `LastError` reports a refused connect). `Keychain.Sign()` /
   `SignHub(key)` make the tokens
+- Device mode (on by default): every connect also sends a `device` header, a
+  7-day certificate for the service key signed by the device key
+  (`~/.hub/device.key`, `$HUB_DEVICE_KEY` or `DeviceKeyPath`, created 0600;
+  `DeviceKey = KeyFile` for a key kept elsewhere), renewed at connect with
+  less than a day left. `Instance` names the service on its device (default:
+  profile name, else first path segment, else `service`); `DeviceName`,
+  `Platform`, `Parent` override the suggestions; `Device = false` turns it off
 - `Post(path, Func<object?, object?> handler, ApiSettings? settings = null)` — fluent
 - `Post(path, Func<object?, Task<object?>> handler, ApiSettings? settings = null)` — async variant
 - `Stream(path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)` — fluent
