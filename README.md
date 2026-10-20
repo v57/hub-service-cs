@@ -77,7 +77,7 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
   (`~/.hub/device.key`, `$HUB_DEVICE_KEY` or `DeviceKeyPath`, created 0600;
   `DeviceKey = KeyFile` for a key kept elsewhere), renewed at connect with
   less than a day left. `Instance` names the service on its device (default:
-  profile name, else first path segment, else `service`); `DeviceName`,
+  profile name, else the working directory's name, else `service`); `DeviceName`,
   `Platform`, `Parent` override the suggestions; `Device = false` turns it off
 - `Post(path, Func<object?, object?> handler, ApiSettings? settings = null)` — fluent
 - `Post(path, Func<object?, Task<object?>> handler, ApiSettings? settings = null)` — async variant
@@ -85,7 +85,8 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
   variant) — the handler also gets the `Request`: `Caller` (who is calling,
   from the hub's `context.hub.caller`: `Key`, `DeviceId`, `DeviceName`,
   `Groups`, `Owner`, and `Via`/`Claimed` through a merged hub; null on hubs
-  that don't send it), `HubKey` and the whole `Context`
+  that don't send it, and unless the request's `context.hub.hubKey` is the
+  pinned hub key), `HubKey` and the whole `Context`
 - `Stream(path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)` — fluent
   (also with a `(body, request)` handler)
 - `App(App app)` — append AppHeader + register stream at `header.Path` yielding

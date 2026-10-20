@@ -87,7 +87,9 @@ public sealed class Request
     // Body is the decoded request body.
     public object? Body { get; init; }
 
-    // Caller is who is calling (`context.hub.caller`); null when the hub sent none.
+    // Caller is who is calling (`context.hub.caller`); null when the hub sent
+    // none or when its `context.hub.hubKey` isn't the hub key this service
+    // pinned.
     public Caller? Caller { get; init; }
 
     // HubKey is the forwarding hub's SPKI (`context.hub.hubKey`); null when the
@@ -98,15 +100,19 @@ public sealed class Request
     // `service` and `device` included).
     public IReadOnlyDictionary<string, object?> Context { get; init; } = new Dictionary<string, object?>();
 
-    internal static Request Of(string path, object? body, object? contextRaw)
+    // Of builds the request for a raw context. The caller is trusted only
+    // when the context names pinnedHubKey as its hub (TS parity), so a
+    // service without a pinned key sees no caller.
+    internal static Request Of(string path, object? body, object? contextRaw, string? pinnedHubKey)
     {
         var context = JsonBody.Decode(contextRaw) as Dictionary<string, object?> ?? [];
+        var hubKey = Caller.HubKey(context);
         return new Request
         {
             Path = path,
             Body = body,
-            Caller = Caller.FromContext(context),
-            HubKey = Caller.HubKey(context),
+            Caller = pinnedHubKey is not null && pinnedHubKey == hubKey ? Caller.FromContext(context) : null,
+            HubKey = hubKey,
             Context = context,
         };
     }

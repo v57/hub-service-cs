@@ -92,11 +92,9 @@ public sealed class DeviceTest : IDisposable
     {
         Assert.Equal("s3-local/Backup Disk", NewService(name: "Backup", instance: "s3-local/Backup Disk").Instance);
         Assert.Equal("Backup", NewService(name: "Backup").Instance);
-        var byPath = NewService();
-        Assert.Equal("service", byPath.Instance);
-        byPath.Post("s3/read", body => body);
-        byPath.Post("other/x", body => body);
-        Assert.Equal("s3", byPath.Instance);
+        var unnamed = NewService();
+        unnamed.Post("s3/read", body => body);
+        Assert.Equal(Path.GetFileName(Directory.GetCurrentDirectory()), unnamed.Instance);
     }
 
     [Fact]

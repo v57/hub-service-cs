@@ -7,10 +7,22 @@ public class CallerTest
     {
         Assert.Null(Caller.FromContext(null));
         Assert.Null(Caller.FromContext(new Dictionary<string, object?> { ["service"] = "x" }));
-        var request = Request.Of("echo", "hi", null);
+        var request = Request.Of("echo", "hi", null, "hub");
         Assert.Null(request.Caller);
         Assert.Null(request.HubKey);
         Assert.Empty(request.Context);
+    }
+
+    [Fact]
+    public void CallerOnlyFromThePinnedHub()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(
+            """{"hub":{"caller":{"key":"k","owner":true},"hubKey":"hub-a"}}""");
+        var context = document.RootElement.Clone();
+        Assert.Equal("k", Request.Of("p", null, context, "hub-a").Caller!.Key);
+        Assert.Null(Request.Of("p", null, context, "hub-b").Caller);
+        Assert.Null(Request.Of("p", null, context, null).Caller);
+        Assert.Equal("hub-a", Request.Of("p", null, context, null).HubKey);
     }
 
     [Fact]

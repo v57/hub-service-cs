@@ -39,8 +39,8 @@ public sealed class ServiceOptions
     public string? DeviceKeyPath { get; init; }
 
     // Instance names this service on its device (`s3-local/Backup Disk`).
-    // Default: the profile name, else the first segment of the first
-    // registered path, else `service`.
+    // Default: the profile name, else the working directory's name, else
+    // `service`.
     public string? Instance { get; init; }
 
     // DeviceName is the suggested device name. Null = the computer name.
@@ -163,8 +163,7 @@ public sealed class Service
     public string AddressKey => NormalizeAddress(_address);
 
     // Instance is the instance name the certificate carries: the option, else
-    // the profile name, else the first segment of the first registered path,
-    // else `service`.
+    // the profile name, else the working directory's name, else `service`.
     public string Instance
     {
         get
@@ -179,10 +178,8 @@ public sealed class Service
                 return _profile.Name;
             }
 
-            lock (_gate)
-            {
-                return _paths.Count > 0 ? _paths[0].Split('/')[0] : "service";
-            }
+            var directory = Path.GetFileName(Directory.GetCurrentDirectory().TrimEnd(Path.DirectorySeparatorChar));
+            return string.IsNullOrEmpty(directory) ? "service" : directory;
         }
     }
 
@@ -302,14 +299,15 @@ public sealed class Service
 
     // Post registers a request/response API endpoint whose handler also
     // receives the Request: the caller identity the hub forwards
-    // (Request.Caller) and the whole request context.
+    // (Request.Caller, only when the request's hub key is the pinned one) and
+    // the whole request context.
     public Service Post(string path, Func<object?, Request, object?> handler, ApiSettings? settings = null)
     {
         AddPath(path, settings);
         _channel.Post(path, request =>
         {
             var body = JsonBody.Decode(request.BodyRaw);
-            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw, _hubKey));
         });
         return this;
     }
@@ -322,7 +320,7 @@ public sealed class Service
         _channel.Post(path, request =>
         {
             var body = JsonBody.Decode(request.BodyRaw);
-            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw, _hubKey));
         });
         return this;
     }
@@ -344,7 +342,7 @@ public sealed class Service
         _channel.Stream(path, request =>
         {
             var body = JsonBody.Decode(request.BodyRaw);
-            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw, _hubKey));
         });
         return this;
     }
