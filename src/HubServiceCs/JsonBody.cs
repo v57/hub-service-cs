@@ -23,7 +23,8 @@ internal static class JsonBody
         return element.ValueKind switch
         {
             JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.TryGetInt64(out var integer) ? integer : element.GetDouble(),
+            // Box each branch: a bare long/double ternary would promote every integer to double.
+            JsonValueKind.Number => element.TryGetInt64(out var integer) ? (object)integer : element.GetDouble(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             JsonValueKind.Null => null,
