@@ -7,8 +7,10 @@ C# port of [hub-service](https://github.com/v57/hub-service) — connect to a
 [hub](https://github.com/v57/hub-lite) (default `ws://127.0.0.1:1997`), host
 your own post/stream API endpoints, register apps, and call API through the hub.
 
-Lite port: no auth, no keychain, no crypto (hub-pro territory). The wire
-contract matches the TS reference (`hub/profile/update`, `hub/service/update`,
+Hub-pro auth is supported: every (re)connect sends `auth` + `v` headers signed
+by the ed25519 keychain (`auth` key file in the cwd, or `$HUBKEY`), bound to
+the hub's key once it is pinned (`v: 1`). hub-lite ignores the headers. The
+wire contract matches the TS reference (`hub/profile/update`, `hub/service/update`,
 AppInterface + element DSL). Built on [channel-cs](https://github.com/v57/channel-cs).
 
 ## Install
@@ -64,7 +66,12 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
 ## API
 
 - `new Service(ServiceOptions?)` — `Address` (port or `ws://` URL; default
-  `1997` or `$HUB`), `Name`, `Icon`
+  `1997` or `$HUB`), `Name`, `Icon`, `Sign`, `HubKey`
+- Hub-bound auth: the first connect uses `v: 0`, asks `hub/info` for the hub
+  key, pins it in `hubs.json` beside the key file and reconnects with `v: 1`
+  (`HubKey` supplies it up front, `ForgetHubKey()` clears the pin,
+  `LastError` reports a refused connect). `Keychain.Sign()` /
+  `SignHub(key)` make the tokens
 - `Post(path, Func<object?, object?> handler, ApiSettings? settings = null)` — fluent
 - `Post(path, Func<object?, Task<object?>> handler, ApiSettings? settings = null)` — async variant
 - `Stream(path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)` — fluent
@@ -75,7 +82,7 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
 - `Values(path, body?, context?)` — `IAsyncEnumerable<object?>` stream call
   through the hub (throws `InvalidOperationException` before `Start`)
 - `Start()` — connect; re-announces `hub/profile/update` + `hub/service/update`
-  on every reconnect (the client auto-reconnects)
+  on every reconnect (the client auto-reconnects); `Stop()` disconnects
 
 Handlers receive the decoded JSON body as plain C# objects (`string`, `long`/`double`,
 `bool`, `null`, `Dictionary<string, object?>` for objects, `List<object?>` for

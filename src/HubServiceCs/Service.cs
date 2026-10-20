@@ -15,11 +15,16 @@ public sealed class ServiceOptions
     // Icon is the profile icon: a string or a {symbol, text} dictionary.
     public object? Icon { get; init; }
 
-    // Sign is the hub-pro auth token factory (default: Keychain.Sign, which
-    // loads or generates the `auth` key file in the cwd). The fresh token is
-    // attached as the `auth` header (with v=0) on EVERY connect/reconnect;
-    // hub-lite ignores it.
+    // Sign is the hub-pro auth token factory (default: the keychain, which
+    // loads or generates the `auth` key file in the cwd and signs v1 tokens
+    // once the hub key is pinned). The fresh token is attached as the `auth`
+    // header on EVERY connect/reconnect; hub-lite ignores it. A custom
+    // factory always connects with v=0.
     public Func<string>? Sign { get; init; }
+
+    // HubKey is the hub's SPKI if known up front (invitation or config).
+    // Null = learn and pin it via `hub/info`.
+    public string? HubKey { get; init; }
 }
 
 // Profile is sent to the hub as hub/profile/update on connect.
@@ -61,7 +66,15 @@ public sealed class ApiSettings
 // Service registers API endpoints on a hub and serves calls forwarded by it.
 // Port of hub-service (TS reference) with hub-pro auth: every (re)connect
 // attaches a fresh signed `auth` token (ed25519 keychain, `auth` file in the
-// cwd) plus `v: 0`; hub-lite ignores both headers.
+// cwd) plus `v`; hub-lite ignores both headers.
+//
+// Hub-bound auth (Docs/Devices/protocol.md section 2): with no pinned key for
+// the address, the service connects with `v: 0`, calls `hub/info`, pins the
+// returned key in `hubs.json` beside the key file and reconnects at once with
+// `v: 1` tokens signed over `hub1:<hub key>:<expiry>`. A hub that doesn't
+// answer `hub/info` (hub-lite) keeps getting v0. A refused v1 connect is
+// reported (LastError), never silently downgraded; call ForgetHubKey when the
+// hub key really changed.
 public sealed class Service
 {
     private readonly object _gate = new();
@@ -71,8 +84,13 @@ public sealed class Service
     private readonly List<AppHeader> _apps = [];
     private readonly object _address;
     private readonly Profile? _profile;
-    private readonly Func<string> _sign;
+    private readonly Func<string>? _sign;
+    private readonly HubPins? _pins;
+    private volatile string? _hubKey;
+    private volatile string? _lastError;
+    private ClientSender<object?>? _client;
     private ChannelSender<object?>? _sender;
+    private bool _stopped;
 
     // Creates a Service. Options are optional.
     public Service(ServiceOptions? options = null)
@@ -83,11 +101,64 @@ public sealed class Service
             ?? (string.IsNullOrEmpty(hub)
                 ? 1997
                 : int.TryParse(hub, out var hubPort) ? hubPort : hub);
-        _sign = options.Sign ?? (() => Keychain.Sign());
+        _sign = options.Sign;
+        _pins = options.Sign is null ? HubPins.Beside(Keychain.KeyPath()) : null;
+        _hubKey = options.HubKey ?? _pins?.Get(NormalizeAddress(_address));
         if (!string.IsNullOrEmpty(options.Name) || options.Icon is not null)
         {
             _profile = new Profile { Name = options.Name, Icon = options.Icon };
         }
+    }
+
+    // HubKey is the hub key v1 tokens are bound to, or null while connecting
+    // with v0.
+    public string? HubKey => _hubKey;
+
+    // LastError is the last connect error (e.g. a refused v1 connect), or null.
+    public string? LastError => _lastError;
+
+    // AddressKey is the address as `hubs.json` keys it (NormalizeAddress).
+    public string AddressKey => NormalizeAddress(_address);
+
+    // ForgetHubKey clears the pinned hub key for this address, so the next
+    // connect uses v0 and pins whatever key `hub/info` returns. Use it when a
+    // hub's key changed on purpose.
+    public void ForgetHubKey()
+    {
+        _hubKey = null;
+        _pins?.Remove(AddressKey);
+    }
+
+    // NormalizeAddress normalizes a hub address like channel TS does
+    // (protocol.md section 2): a bare port becomes `ws://localhost:<port>`; a
+    // URL keeps its form with the scheme and host lowercased and no trailing
+    // slash.
+    public static string NormalizeAddress(object address)
+    {
+        if (address is int port)
+        {
+            return $"ws://localhost:{port}";
+        }
+
+        var text = address.ToString()!.Trim();
+        if (text.Length > 0 && text.All(char.IsAsciiDigit))
+        {
+            return $"ws://localhost:{text}";
+        }
+
+        var schemeEnd = text.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd >= 0)
+        {
+            var authorityEnd = text.IndexOf('/', schemeEnd + 3);
+            if (authorityEnd < 0)
+            {
+                authorityEnd = text.Length;
+            }
+
+            text = text[..authorityEnd].ToLowerInvariant() + text[authorityEnd..];
+        }
+
+        return text.TrimEnd('/');
     }
 
     // Post registers a request/response API endpoint.
@@ -159,42 +230,152 @@ public sealed class Service
     {
         lock (_gate)
         {
-            if (_sender is not null)
+            if (_client is null && !_stopped)
             {
-                return this;
+                Connect();
             }
-
-            var options = new ClientOptions<object?>
-            {
-                Headers = () =>
-                {
-                    // Fresh token per (re)connect: the headers provider runs
-                    // on every connection attempt (before the upgrade), so the
-                    // hub sees a fresh signed identity each time. The provider
-                    // is synchronous — no deadlock risk with the read loop.
-                    IReadOnlyDictionary<string, string> headers = new Dictionary<string, string>
-                    {
-                        ["auth"] = _sign(),
-                        ["v"] = "0",
-                    };
-                    return ValueTask.FromResult(headers);
-                },
-                OnConnect = s =>
-                {
-                    _ = SendUpdatesAsync(s);
-                    return Task.CompletedTask;
-                },
-            };
-            var sender = _address switch
-            {
-                int port => _channel.Connect(port, options),
-                string address => _channel.Connect(address, options),
-                _ => throw new InvalidOperationException($"Invalid address: {_address}"),
-            };
-            _sender = sender.Sender;
         }
 
         return this;
+    }
+
+    // Stop closes the connection and stops reconnecting.
+    public void Stop()
+    {
+        lock (_gate)
+        {
+            _stopped = true;
+            _client?.Stop();
+            _client = null;
+        }
+    }
+
+    // Connect dials the hub; the caller holds _gate.
+    private void Connect()
+    {
+        ClientSender<object?>? client = null;
+        var options = new ClientOptions<object?>
+        {
+            // Fresh token per (re)connect: the headers provider runs on every
+            // connection attempt (before the upgrade), so the hub sees a fresh
+            // signed identity each time. The provider is synchronous — no
+            // deadlock risk with the read loop.
+            Headers = () => ValueTask.FromResult<IReadOnlyDictionary<string, string>>(AuthHeaders()),
+            OnConnect = s =>
+            {
+                // The client awaits this before reading replies, so calls run
+                // in the background.
+                _ = OnConnectedAsync(client, s);
+                return Task.CompletedTask;
+            },
+        };
+        client = _address switch
+        {
+            int port => _channel.Connect(port, options),
+            string address => _channel.Connect(address, options),
+            _ => throw new InvalidOperationException($"Invalid address: {_address}"),
+        };
+        client.WebSocket.OnProtocolError = ReportConnectError;
+        _client = client;
+        _sender = client.Sender;
+    }
+
+    // AuthHeaders builds the hub-pro headers for one connect: a fresh token
+    // and the protocol version, `1` with a token bound to the pinned hub key,
+    // else `0`.
+    internal Dictionary<string, string> AuthHeaders()
+    {
+        var headers = new Dictionary<string, string>();
+        var hubKey = _hubKey;
+        if (_sign is not null)
+        {
+            headers["auth"] = _sign();
+            headers["v"] = "0";
+        }
+        else if (hubKey is not null)
+        {
+            headers["auth"] = Keychain.SignHub(hubKey);
+            headers["v"] = "1";
+        }
+        else
+        {
+            headers["auth"] = Keychain.Sign();
+            headers["v"] = "0";
+        }
+
+        return headers;
+    }
+
+    private async Task OnConnectedAsync(ClientSender<object?>? client, ChannelSender<object?> sender)
+    {
+        _lastError = null;
+        if (await LearnHubKeyAsync(sender).ConfigureAwait(false))
+        {
+            // Pinned the hub key: reconnect at once with a v1 token.
+            lock (_gate)
+            {
+                if (client is not null && ReferenceEquals(_client, client) && !_stopped)
+                {
+                    client.Stop();
+                    Connect();
+                }
+            }
+
+            return;
+        }
+
+        await SendUpdatesAsync(sender).ConfigureAwait(false);
+    }
+
+    // LearnHubKeyAsync asks `hub/info` for the hub key on a v0 connection with
+    // no pinned key and pins it. Returns true when a key was newly pinned.
+    private async Task<bool> LearnHubKeyAsync(ChannelSender<object?> sender)
+    {
+        if (_pins is null || _hubKey is not null)
+        {
+            return false;
+        }
+
+        string? key;
+        try
+        {
+            var info = JsonBody.Decode(await sender.SendAsync<object?>("hub/info").ConfigureAwait(false));
+            key = (info as Dictionary<string, object?>)?.GetValueOrDefault("key") as string;
+        }
+        catch
+        {
+            return false; // hub-lite or an older hub-pro: stay on v0.
+        }
+
+        if (key is null)
+        {
+            return false;
+        }
+
+        _hubKey = key;
+        try
+        {
+            _pins.Put(AddressKey, key);
+        }
+        catch
+        {
+            // Unwritable pin file: keep the key for this process only.
+        }
+
+        return true;
+    }
+
+    private void ReportConnectError(string message)
+    {
+        if (_hubKey is not null && _sign is null && message != _lastError)
+        {
+            Console.Error.WriteLine(
+                $"hub-service: the hub at {AddressKey} refused the v1 connect for hub key {_hubKey} ({message}). "
+                + "If it says invalid signature, the hub key changed or a different server answers; "
+                + "call ForgetHubKey() if the change is expected.");
+        }
+
+        _lastError = message;
     }
 
     // UpdatePayload builds the current hub/service/update payload.

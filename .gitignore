@@ -6,6 +6,7 @@ coverage/
 .idea/
 .DS_Store
 auth
+hubs.json
 CLAUDE.md
 /.claude
 

@@ -4,6 +4,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
 
+[Collection("Keychain")]
 public class KeychainTest
 {
     // TS-generated test key (hub-pro owner key; also in
@@ -46,11 +47,11 @@ public class KeychainTest
             Assert.Equal("key", parts[0]);
             Assert.Equal(TsTestPub, parts[1]);
 
-            // Expiry is a DECIMAL epoch-seconds string of now + 10 (TS parity;
+            // Expiry is a DECIMAL epoch-seconds string of now + 60 (protocol.md;
             // hub-pro rejects it once expired or if over 5 minutes ahead).
             Assert.True(long.TryParse(parts[3], out var expiry));
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            Assert.InRange(expiry, now + 9, now + 11);
+            Assert.InRange(expiry, now + 59, now + 61);
 
             // The signature must verify against the public key embedded in the
             // token over the raw expiry STRING (hub-pro's verify() path).
