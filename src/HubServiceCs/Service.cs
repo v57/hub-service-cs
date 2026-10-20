@@ -658,7 +658,14 @@ public sealed class Service
             {
                 await sender.SendAsync<object?>("hub/profile/update", profile).ConfigureAwait(false);
             }
+        }
+        catch
+        {
+            // A hub without the profile endpoint still gets the services (TS parity).
+        }
 
+        try
+        {
             await sender.SendAsync<object?>("hub/service/update", UpdatePayload()).ConfigureAwait(false);
         }
         catch
