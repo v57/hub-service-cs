@@ -300,12 +300,52 @@ public sealed class Service
         return this;
     }
 
+    // Post registers a request/response API endpoint whose handler also
+    // receives the Request: the caller identity the hub forwards
+    // (Request.Caller) and the whole request context.
+    public Service Post(string path, Func<object?, Request, object?> handler, ApiSettings? settings = null)
+    {
+        AddPath(path, settings);
+        _channel.Post(path, request =>
+        {
+            var body = JsonBody.Decode(request.BodyRaw);
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+        });
+        return this;
+    }
+
+    // Post registers an async request/response API endpoint whose handler
+    // also receives the Request.
+    public Service Post(string path, Func<object?, Request, Task<object?>> handler, ApiSettings? settings = null)
+    {
+        AddPath(path, settings);
+        _channel.Post(path, request =>
+        {
+            var body = JsonBody.Decode(request.BodyRaw);
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+        });
+        return this;
+    }
+
     // Stream registers a streaming API endpoint. The handler receives the body
     // and returns the values to emit (TS/Go parity).
     public Service Stream(string path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)
     {
         AddPath(path, settings);
         _channel.Stream(path, request => handler(JsonBody.Decode(request.BodyRaw)));
+        return this;
+    }
+
+    // Stream registers a streaming API endpoint whose handler also receives
+    // the Request with the caller identity.
+    public Service Stream(string path, Func<object?, Request, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)
+    {
+        AddPath(path, settings);
+        _channel.Stream(path, request =>
+        {
+            var body = JsonBody.Decode(request.BodyRaw);
+            return handler(body, Request.Of(request.Path, body, request.ContextRaw));
+        });
         return this;
     }
 

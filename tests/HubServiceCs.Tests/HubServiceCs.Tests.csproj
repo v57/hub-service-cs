@@ -15,6 +15,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/HubServiceCs/HubServiceCs.csproj" />
+    <!-- A fake hub for the end-to-end auth/device/caller test. -->
+    <ProjectReference Include="../../../../Channel/channel-cs/src/ChannelCs.Server/ChannelCs.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

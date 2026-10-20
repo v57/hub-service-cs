@@ -81,7 +81,13 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
   `Platform`, `Parent` override the suggestions; `Device = false` turns it off
 - `Post(path, Func<object?, object?> handler, ApiSettings? settings = null)` — fluent
 - `Post(path, Func<object?, Task<object?>> handler, ApiSettings? settings = null)` — async variant
+- `Post(path, Func<object?, Request, object?> handler, ...)` (and the async
+  variant) — the handler also gets the `Request`: `Caller` (who is calling,
+  from the hub's `context.hub.caller`: `Key`, `DeviceId`, `DeviceName`,
+  `Groups`, `Owner`, and `Via`/`Claimed` through a merged hub; null on hubs
+  that don't send it), `HubKey` and the whole `Context`
 - `Stream(path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)` — fluent
+  (also with a `(body, request)` handler)
 - `App(App app)` — append AppHeader + register stream at `header.Path` yielding
   the AppInterface (all 5 keys: `header`, `body`, `top`, `bottom`, `data`)
 - `Send(path, body?, context?)` — `Task<object?>` client call through the hub
