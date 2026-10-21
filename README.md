@@ -7,7 +7,7 @@ C# port of [hub-service](https://github.com/v57/hub-service) — connect to a
 [hub](https://github.com/v57/hub-lite) (default `ws://127.0.0.1:1997`), host
 your own post/stream API endpoints, register apps, and call API through the hub.
 
-Hub-pro auth is supported: every (re)connect sends `auth` + `v` headers signed
+hub-server auth is supported: every (re)connect sends `auth` + `v` headers signed
 by the ed25519 keychain (`auth` key file in the cwd, or `$HUBKEY`), bound to
 the hub's key once it is pinned (`v: 1`). hub-lite ignores the headers. The
 wire contract matches the TS reference (`hub/profile/update`, `hub/service/update`,

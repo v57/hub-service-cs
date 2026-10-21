@@ -7,7 +7,7 @@ using Org.BouncyCastle.Security;
 [Collection("Keychain")]
 public class KeychainTest
 {
-    // TS-generated test key (hub-pro owner key; also in
+    // TS-generated test key (hub-server owner key; also in
     // documentation/hub-pro-support-contract.md). auth = base64 of the
     // 48-byte PKCS8 private + 44-byte SPKI public; pub = the SPKI alone.
     private const string TsTestAuth =
@@ -48,13 +48,13 @@ public class KeychainTest
             Assert.Equal(TsTestPub, parts[1]);
 
             // Expiry is a DECIMAL epoch-seconds string of now + 60 (protocol.md;
-            // hub-pro rejects it once expired or if over 5 minutes ahead).
+            // hub-server rejects it once expired or if over 5 minutes ahead).
             Assert.True(long.TryParse(parts[3], out var expiry));
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             Assert.InRange(expiry, now + 59, now + 61);
 
             // The signature must verify against the public key embedded in the
-            // token over the raw expiry STRING (hub-pro's verify() path).
+            // token over the raw expiry STRING (hub-server's verify() path).
             var publicKey = (Ed25519PublicKeyParameters)PublicKeyFactory.CreateKey(
                 Convert.FromBase64String(parts[1]));
             var data = Encoding.ASCII.GetBytes(parts[3]);
@@ -148,7 +148,7 @@ public class KeychainTest
         }
     }
 
-    // Mirrors hub-pro's verification: ed25519 over the expiry string against
+    // Mirrors hub-server's verification: ed25519 over the expiry string against
     // the SPKI public key carried by the token.
     private static bool Verify(Ed25519PublicKeyParameters publicKey, byte[] data, byte[] signature)
     {

@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ed25519 signing for hub-pro auth (System.Security.Cryptography has no
+    <!-- ed25519 signing for hub-server auth (System.Security.Cryptography has no
          standalone Ed25519 type in .NET 10, only ML-DSA hybrids). -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.0" />
   </ItemGroup>

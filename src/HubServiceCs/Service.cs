@@ -15,7 +15,7 @@ public sealed class ServiceOptions
     // Icon is the profile icon: a string or a {symbol, text} dictionary.
     public object? Icon { get; init; }
 
-    // Sign is the hub-pro auth token factory (default: the keychain, which
+    // Sign is the hub-server auth token factory (default: the keychain, which
     // loads or generates the `auth` key file in the cwd and signs v1 tokens
     // once the hub key is pinned). The fresh token is attached as the `auth`
     // header on EVERY connect/reconnect; hub-lite ignores it. A custom
@@ -90,7 +90,7 @@ public sealed class ApiSettings
 }
 
 // Service registers API endpoints on a hub and serves calls forwarded by it.
-// Port of hub-service (TS reference) with hub-pro auth: every (re)connect
+// Port of hub-service (TS reference) with hub-server auth: every (re)connect
 // attaches a fresh signed `auth` token (ed25519 keychain, `auth` file in the
 // cwd) plus `v`; hub-lite ignores both headers.
 //
@@ -496,7 +496,7 @@ public sealed class Service
         _sender = client.Sender;
     }
 
-    // AuthHeaders builds the hub-pro headers for one connect: a fresh token
+    // AuthHeaders builds the hub-server headers for one connect: a fresh token
     // and the protocol version, `1` with a token bound to the pinned hub key,
     // else `0`.
     internal Dictionary<string, string> AuthHeaders()

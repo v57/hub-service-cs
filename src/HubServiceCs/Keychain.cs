@@ -1,6 +1,6 @@
 namespace HubServiceCs;
 
-// ed25519 keychain: load-or-generate the `auth` key file and sign hub-pro
+// ed25519 keychain: load-or-generate the `auth` key file and sign hub-server
 // auth tokens. Wire parity with hub-service/keychain.ts and
 // Docs/Devices/protocol.md section 2:
 //
@@ -12,9 +12,9 @@ namespace HubServiceCs;
 //     expiry  = DECIMAL epoch-seconds string of now + 60
 //     sig     = base64 ed25519 signature over `<expiry>` (header `v: 0`) or
 //               over `hub1:<hub SPKI>:<expiry>` (header `v: 1`, bound to one
-//               hub). hub-pro allows 30 s of clock skew and at most 300 s
+//               hub). hub-server allows 30 s of clock skew and at most 300 s
 //               ahead.
-// - hub-pro verifies the signature against the embedded public key and treats
+// - hub-server verifies the signature against the embedded public key and treats
 //   the key as the connection identity (owner/host/group permissions);
 //   hub-lite ignores the auth header entirely.
 public static class Keychain
@@ -62,7 +62,7 @@ public static class Keychain
     }
 
     // The service's public key: base64 of the 44-byte SPKI DER public key.
-    // This is the connection identity hub-pro associates permissions with.
+    // This is the connection identity hub-server associates permissions with.
     public static string PublicKey()
     {
         return Key().PublicKey;
