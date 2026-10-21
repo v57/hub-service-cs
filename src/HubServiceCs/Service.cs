@@ -367,6 +367,61 @@ public sealed class Service
         return this;
     }
 
+    // Network publishes Hub Network shares: agent socket settings and the
+    // current publications.
+    public NetworkPublisher Network { get; } = new();
+
+    // Share declares a Hub Network share before Start: the local host:port is
+    // published under name on connect and after every reconnect. policy is
+    // {mode: hub|private|disabled}, {mode: group, group} or {mode: keys,
+    // keys}; null means private.
+    public Service Share(string name, string protocol, string host, int port, IReadOnlyDictionary<string, object?>? policy = null)
+    {
+        Network.Declare(new NetworkShare(name, protocol, host, port, policy ?? PrivatePolicy));
+        return this;
+    }
+
+    // PublishShare publishes a Hub Network share now (TS publishShare): the
+    // local hub-net agent attests the port, then the declared set goes to the
+    // hub. Returns every current publication. Requires Start.
+    public Task<IReadOnlyList<Dictionary<string, object?>>> PublishShare(
+        string name, string protocol, string host, int port, IReadOnlyDictionary<string, object?>? policy = null)
+    {
+        return Network.PublishAsync(new NetworkShare(name, protocol, host, port, policy ?? PrivatePolicy), ShareKey(), ReplaceShares);
+    }
+
+    // UpdateShare changes a published share's policy and/or port (null keeps
+    // the current one) and republishes.
+    public Task<IReadOnlyList<Dictionary<string, object?>>> UpdateShare(
+        string name, IReadOnlyDictionary<string, object?>? policy = null, int? port = null)
+    {
+        var current = Network.DeclaredShares.FirstOrDefault(share => share.Name == name)
+            ?? throw new ArgumentException($"Share '{name}' not found");
+        return Network.PublishAsync(
+            current with { Policy = policy ?? current.Policy, Port = port ?? current.Port }, ShareKey(), ReplaceShares);
+    }
+
+    // RemoveShare removes a share and republishes the rest.
+    public Task<IReadOnlyList<Dictionary<string, object?>>> RemoveShare(string name)
+    {
+        return Network.RemoveAsync(name, ShareKey(), ReplaceShares);
+    }
+
+    private static readonly IReadOnlyDictionary<string, object?> PrivatePolicy =
+        new Dictionary<string, object?> { ["mode"] = "private" };
+
+    private KeyFile ShareKey()
+    {
+        return _sign is null
+            ? Keychain.Key()
+            : throw new InvalidOperationException("Share publication needs the keychain service key, not a custom sign");
+    }
+
+    private Task<object?> ReplaceShares(object body)
+    {
+        return Send("network/shares/replace", body);
+    }
+
     // Send calls an API through the hub. Throws InvalidOperationException if
     // the service is not started.
     public async Task<object?> Send(string path, object? body = null, object? context = null)
@@ -492,6 +547,19 @@ public sealed class Service
         }
 
         await SendUpdatesAsync(sender).ConfigureAwait(false);
+        if (Network.HasShares && _sign is null)
+        {
+            try
+            {
+                await Network.RepublishAllAsync(Keychain.Key(), async body =>
+                    JsonBody.Decode(await sender.SendAsync<object?>("network/shares/replace", body).ConfigureAwait(false)))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"hub-service: failed to republish network shares: {error.Message}");
+            }
+        }
     }
 
     // LearnHubKeyAsync asks `hub/info` for the hub key on a v0 connection with

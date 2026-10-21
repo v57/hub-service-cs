@@ -89,6 +89,14 @@ await foreach (var value in service.Values("echo/ui")) { /* ... */ }
   pinned hub key), `HubKey` and the whole `Context`
 - `Stream(path, Func<object?, IAsyncEnumerable<object?>> handler, ApiSettings? settings = null)` — fluent
   (also with a `(body, request)` handler)
+- Hub Network shares (TS `publishShare` parity): `Share(name, protocol, host,
+  port, policy?)` declares one before `Start` (republished on every connect);
+  `PublishShare(...)`, `UpdateShare(name, policy?, port?)` and
+  `RemoveShare(name)` change the set at runtime. The local hub-net agent
+  attests each share over its Unix socket (`$HUB_NET_AGENT_SOCKET`, else
+  `/var/run/hub-net/agent.sock` on macOS, `/run/hub-net/agent.sock` on Linux;
+  `Network.AgentSocket` overrides it), then the set goes to the hub with
+  `network/shares/replace`. `Network.Publications` lists the results
 - `App(App app)` — append AppHeader + register stream at `header.Path` yielding
   the AppInterface (all 5 keys: `header`, `body`, `top`, `bottom`, `data`)
 - `Send(path, body?, context?)` — `Task<object?>` client call through the hub
